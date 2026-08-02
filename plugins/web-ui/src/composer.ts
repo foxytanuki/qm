@@ -204,6 +204,7 @@ export const composerState = {
 };
 
 const pastedTextIds = new Set<string>();
+const composingInputs = new WeakSet<HTMLTextAreaElement>();
 
 let dragDepth = 0;
 let skillsLoading = false;
@@ -383,6 +384,9 @@ export function composerForm(agent: Agent): TemplateResult {
                 ?disabled=${inputBlocked}
                 .value=${live(composerState.draft)}
                 @input=${(e: InputEvent) => onDraftInput(e, agent)}
+                @compositionstart=${(e: CompositionEvent) =>
+                  composingInputs.add(e.currentTarget as HTMLTextAreaElement)}
+                @compositionend=${(e: CompositionEvent) => onComposerCompositionEnd(e, agent)}
                 @keydown=${(e: KeyboardEvent) => onComposerKeydown(e, agent)}
                 @paste=${(e: ClipboardEvent) => void onComposerPaste(e, agent)}
               ></textarea>
@@ -979,10 +983,17 @@ function scopeBadge(scope: string): string {
 
 function submitComposer(e: Event, agent: Agent): void {
   e.preventDefault();
+  const input = (e.currentTarget as HTMLFormElement).querySelector<HTMLTextAreaElement>(".composer-input");
+  if (input && composingInputs.has(input)) return;
   void sendPrompt(agent);
 }
 
-function onDraftInput(e: InputEvent, agent: Agent): void {
+function onComposerCompositionEnd(e: CompositionEvent, agent: Agent): void {
+  composingInputs.delete(e.currentTarget as HTMLTextAreaElement);
+  onDraftInput(e, agent);
+}
+
+function onDraftInput(e: Event, agent: Agent): void {
   composerState.draft = (e.currentTarget as HTMLTextAreaElement).value;
   persistDraft();
   const hadError = Boolean(composerState.error);
@@ -1030,6 +1041,7 @@ function clearComposerDom(agent: Agent): void {
 }
 
 function onComposerKeydown(e: KeyboardEvent, agent: Agent): void {
+  if (composingInputs.has(e.currentTarget as HTMLTextAreaElement) || e.isComposing || e.keyCode === 229) return;
   const slash = currentSlashMenu();
   if (slash.open) {
     if (e.key === "Escape") {
